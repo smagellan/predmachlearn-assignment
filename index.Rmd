@@ -77,6 +77,7 @@ Strategy is as follows: train a cople two models, then choose the best(with high
 
 #####Cross-validation and out-of-sample error
 Original training data will be partitioned into 2 subsets: subTrain data(75% of original dataset) - used for model training; subTest data(25%) - used for model validation. The winner will be used on original testing data. 
+We can expect high accuracy (and low out-of-sample error) given data "describe" variablity well and model "absorbs" variability well. 
 
 #####Attempt/candidate #1: Decision tree-based model
 ```{r}
