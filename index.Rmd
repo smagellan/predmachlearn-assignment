@@ -1,0 +1,128 @@
+---
+title: "Classifying Unilateral Dumbbell Biceps Curl based on activity data"
+author: "Vv"
+date: "01/25/2015"
+output: html_document
+---
+
+##Intro
+##Dataset description
+
+    Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+    
+    exactly according to the specification (Class A), 
+    throwing the elbows to the front       (Class B), 
+    lifting the dumbbell only halfway      (Class C), 
+    lowering the dumbbell only halfway     (Class D) 
+    and throwing the hips to the front     (Class E).
+    
+    Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+Full description on dataset available [here](http://groupware.les.inf.puc-rio.br/har#weight_lifting_exercises)
+
+
+
+##Working with data
+
+#####Preparing workspace
+```{r setoptions,echo=TRUE}
+library(caret);
+library(rpart);
+#library(rpart.plot);
+library(rattle);
+library(randomForest);
+
+set.seed(42);
+sessionInfo();
+```
+
+####Loading and initial cleaning
+
+Initial cleaning includes 
+1) treating "NA", "#DIV/0!"(Looks like scientists did use MS Excel), "" strings as NA values - performed by read.csv automatically given na.strings was provided
+2) sweeping out rows with all missed values since they do not introduce any variability required to build model.
+
+```{r}
+trainData <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!", ""));
+testData  <- read.csv('pml-testing.csv',  na.strings=c("NA","#DIV/0!", ""));
+#sweep out empty rows within train and test data
+trainData <- trainData[,colSums(is.na(trainData)) == 0];
+testData  <- testData[,colSums(is.na(testData)) == 0];
+
+#variables user_name, *timestamp* are irrelevant for exploration
+irreleventIdxs <- grep("(*timestamp*)|(user_name)|(*_window)|(X)", names(trainData));
+print(sprintf("removing variables from positions %s", paste(irreleventIdxs, collapse=', ')) );
+trainData   <- trainData[, -irreleventIdxs];
+testData    <- testData[, -irreleventIdxs];
+```
+#####Data partitioning
+Nothing special here. Random subsampling without replacement. One partition for model training, one for model testing.
+```{r}
+trainIdxs <- createDataPartition(y=trainData$classe, p=0.75, list=FALSE);
+subTrain  <- trainData[trainIdxs, ];
+subTest   <- trainData[-trainIdxs, ];
+```
+#####Data overview
+Nothing special here, too. Just a histogram to view at the data from one of lot possible points of view.
+```{r}
+plot(subTrain$classe, col="lightgreen", main="Classe levels within subTrain dataset", xlab="classe", ylab="Frequency");
+```
+
+####Building model
+
+####Before we start
+
+#####Strategy
+Strategy is as follows: train a cople two models, then choose the best(with highest accuracy).
+
+#####Cross-validation and out-of-sample error
+Original training data will be partitioned into 2 subsets: subTrain data(75% of original dataset) - used for model training; subTest data(25%) - used for model validation. The winner will be used on original testing data. 
+
+#####Attempt/candidate #1: Decision tree-based model
+```{r}
+m1 <- rpart(classe ~ ., data=subTrain, method="class");
+# Predicting:
+p1 <- predict(m1, subTest, type = "class");
+# Plot of the Decision Tree
+#rpart.plot(m1, main="Classification Tree", extra=102, under=TRUE, faclen=0);
+fancyRpartPlot(m1);
+```
+
+```{r}
+print(confusionMatrix(p1, subTest$classe));
+```
+#####Attempt/candidate #2: Random forest-based model
+
+```{r}
+m2 <- randomForest(classe ~. , data=subTrain, method="class");
+p2 <- predict(m2, subTest, type = "class");
+print(confusionMatrix(p2, subTest$classe));
+```
+
+####Results
+
+Random forest-based model(Accuracy: 0.9961; 95% Conf. Interval(CI) : (0.994, 0.9977)) is the winner over decision tree-based(Accuracy: 0.7402; 95% CI : (0.7277, 0.7524)), with no doubt, but it takes much, MUCH more time to train. 
+
+####Calculating out-of-sample error
+```{r}
+accuracy <- sum(p2 == subTest$classe)/length(p2);
+oosError <- 1 - accuracy;
+print(paste0("Out-of-sample estimation: ", round(oosError * 100, digits = 2), "%") );
+```
+
+Looks like this number is correct since submission(for 20 test-cases) gave zero errors.
+
+####Evaluate model using 20 test-cases
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+answers <- predict(m2, newdata = testData);
+print(answers);
+pml_write_files(answers);
+```
